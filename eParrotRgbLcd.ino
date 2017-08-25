@@ -15,8 +15,16 @@
 #include "T2ABV.h"
 #include "myEnums.h"
 
+/* -----------------IMPORTANT-----------------
+ * In SdFatConfig.h change
+ * #define USE_LONG_FILE_NAMES 1
+ * into
+ * #define USE_LONG_FILE_NAMES 0
+ * to make the compiled sketch fit into the UNO R3
+ */
+
 const char msgSplash1[] PROGMEM = "eParrot  RGB LCD";
-const char msgSplash2[] PROGMEM = "V 0.0     (c) EC";
+const char msgSplash2[] PROGMEM = "V 0.01    (c) EC";
 const char logFilename[] PROGMEM =  "RUN_00.CSV";
 const char msgNoBaro[] PROGMEM = "No Barometer";
 const char msgCanceled[] PROGMEM = "Canceled";
@@ -28,9 +36,10 @@ const char msgFullCard[] PROGMEM = "Card full ";
 const char msghPa[] PROGMEM = "hPa";
 const char msgNoValue[] PROGMEM = "--.-";
 const char msgNoSensor[] PROGMEM = "  Sensor error  ";
-const char msgBoilerOffset[] PROGMEM = "BLR OFFS";
-const char msgVaporOffset[] PROGMEM = "VPR OFFS";
-
+const char msgBoilerOffset[] PROGMEM = "Blr Offs";
+const char msgVaporOffset[] PROGMEM = "Vpr Offs";
+const char msgSilent[] PROGMEM = "Silent";
+const char msgNoisy[] PROGMEM = "Noisy";
 /*----make instances for the Dallas sensors, BMP280, etc. ----*/
 OneWire pinBoilerSensor(pinBoiler), pinVaporSensor(pinVapor);
 SingleDS18B20 BoilerDS18B20(&pinBoilerSensor), VaporDS18B20(&pinVaporSensor);
@@ -57,10 +66,10 @@ struct sensors {
 } Sensors;
 
 union {
-	uint8_t settingsArray[13];
+	uint8_t settingsArray[];
 	struct {
-		float VaporOffset;			// in C
-		float BoilerOffset;			// in C
+		int16_t VaporOffset;		// in cC
+		int16_t BoilerOffset;		// in cC
 		uint8_t Alarm[4];			// in %
 		uint8_t AlarmWarmedUp;		// in C
 	};
@@ -78,7 +87,10 @@ void (*AutoPageSlowRefresh)();
 void (*AutoPageFastRefresh)();
 void (*ReturnPage)();
 
+bool Backlight = true;
+bool Silent;
 uint32_t LastFastSensorUpdate;
+uint32_t LastHandleAlarmUpdate;
 uint32_t LastSlowSensorUpdate;
 uint32_t StartTimeLog;
 uint32_t LastAlarmUpdate;
@@ -86,16 +98,16 @@ uint32_t LastWarmingupUpdate;
 uint8_t CurrentAlarm;
 
 
-float *offset;
-float oldOffset;
+int16_t* offset;
+int16_t oldOffset;
 
 
 void saveSettings() {
-	rtc.writeRam(0,Settings.settingsArray,13);
+	rtc.writeRam(0,Settings.settingsArray,sizeof(Settings));
 }
 
 void loadSettings() {
-	rtc.readRam(0, 13, Settings.settingsArray);
+	rtc.readRam(0, sizeof(Settings), Settings.settingsArray);
 }
 
 
@@ -206,7 +218,6 @@ void setup()
 	if (Settings.AlarmWarmedUp > 99)
 		Settings.AlarmWarmedUp = 99;
 	showMainInit();
-	Settings.AlarmWarmedUp = 80;
 }
 
 void doFunctionAtInterval(void (*callBackFunction)(), uint32_t *lastEvent,
@@ -222,6 +233,7 @@ void doFunctionAtInterval(void (*callBackFunction)(), uint32_t *lastEvent,
 void loop()
 {
 	doFunctionAtInterval(readFastSensors, &LastFastSensorUpdate, 250);	// read the SMT172 every 250 millisecond
+	doFunctionAtInterval(handleAlarms, &LastHandleAlarmUpdate, 500);	// handle the alarms every 500 millisecond
 	doFunctionAtInterval(readSlowSensors, &LastSlowSensorUpdate, 1000);	// read the baro and DS18B20's every second
 	doFunctionAtInterval(handleWarmingup, &LastWarmingupUpdate, 60000);	// check warming up every minute
 	lcd.readKeys();
@@ -241,7 +253,7 @@ void handleWarmingup() {
 	Sensors.BoilerLastTemperature = Sensors.BoilerTemperature;
 }
 
-void HandleAlarms() {
+void handleAlarms() {
 	if (	Sensors.VaporABV >= 0 &&
 			Sensors.VaporABV < Settings.Alarm[CurrentAlarm]) {
 		if (AlarmStatus == armed) {
@@ -257,17 +269,25 @@ void HandleAlarms() {
 			lcd.setColor(RgbLcdKeyShieldI2C::clWhite);
 			break;
 		case armed:
-			lcd.setColor(RgbLcdKeyShieldI2C::clGreen);
+			if (Silent)
+				lcd.setColor(RgbLcdKeyShieldI2C::clBlue);
+			else
+				lcd.setColor(RgbLcdKeyShieldI2C::clGreen);
 			break;
 		case triggered:
-			tone(pinBeeper, 440, 500);
-			//no break
+			if (Backlight) {
+				if (!Silent)
+					tone(pinBeeper, 440, 500);
+				lcd.setColor(RgbLcdKeyShieldI2C::clRed);
+			} else
+				lcd.setColor(RgbLcdKeyShieldI2C::clViolet);
+			break;
 		case acknowledged:
 			lcd.setColor(RgbLcdKeyShieldI2C::clRed);
 			break;
 	}
+	Backlight = !Backlight;
 }
-
 
 void readFastSensors() {
 	if (Sensors.VaporType == smt172) {
@@ -276,7 +296,7 @@ void readFastSensors() {
 			break;
 		case 1:
 			Sensors.VaporTemperature = SMT172::getTemperature()
-					+ Settings.VaporOffset;
+					+ float(Settings.VaporOffset) / 100;
 			Sensors.VaporABV = TtoVaporABV(
 					correctedAzeo(Sensors.VaporTemperature,
 							Sensors.BaroPressure));
@@ -301,7 +321,7 @@ void readSlowSensors() {
 	if (Sensors.VaporType == DS18B20) {
 		if (VaporDS18B20.read() && VaporDS18B20.convert()) {
 			Sensors.VaporTemperature = VaporDS18B20.getTempAsC()
-					+ Settings.VaporOffset;
+					+ float(Settings.VaporOffset) / 100;
 			Sensors.VaporABV = TtoVaporABV(
 					correctedAzeo(Sensors.VaporTemperature,
 							Sensors.BaroPressure));
@@ -312,7 +332,7 @@ void readSlowSensors() {
 	if (Sensors.BoilerType == DS18B20) {
 		if (BoilerDS18B20.read() && BoilerDS18B20.convert()) {
 			Sensors.BoilerTemperature = BoilerDS18B20.getTempAsC()
-					+ Settings.BoilerOffset;
+					+ float(Settings.BoilerOffset / 100);
 			Sensors.BoilerABV = TtoLiquidABV(
 					correctedH2O(Sensors.BoilerTemperature,
 							Sensors.BaroPressure));
@@ -331,8 +351,6 @@ void readSlowSensors() {
 
 	if (LogFile.isLogging)
 		LogFile.isLogging = writeDataToFile();
-
-	HandleAlarms();
 }
 
 createStatus createFile() {
@@ -394,11 +412,7 @@ void increaseDigit() {
 	lcd.noCursor();
 	uint8_t value = lcd.read();
 	lcd.moveCursorLeft();
-	if (value == ' ')
-		lcd.print('-');
-	else if (value == '-')
-		lcd.print(' ');
-	else if (value < (9 + 0x30))
+	if (value < (9 + 0x30))
 		lcd.print(char(++value));
 	else
 		lcd.print('0');
@@ -410,11 +424,7 @@ void decreaseDigit() {
 	lcd.noCursor();
 	uint8_t value = lcd.read();
 	lcd.moveCursorLeft();
-	if (value == ' ')
-		lcd.print('-');
-	else if (value == '-')
-		lcd.print(' ');
-	else if (value > (0 + 0x30))
+	if (value > (0 + 0x30))
 		lcd.print(char(--value));
 	else
 		lcd.print('9');
@@ -495,6 +505,7 @@ void showMainInit() {
 	lcd.keyLeft.onShortPress = prevAlarm;
 	lcd.keyLeft.onRepPress = prevAlarm;
 	lcd.keySelect.onShortPress = toggleAlarm;
+	lcd.keySelect.onLongPress = toggleSilent;
 	showMainRefreshSlow();
 	AutoPageSlowRefresh = showMainRefreshSlow;
 	AutoPageFastRefresh = showMainRefreshFast;
@@ -528,6 +539,17 @@ void toggleAlarm() {
 		default:
 			break;
 	}
+}
+
+void toggleSilent() {
+	lcd.clear();
+	Silent = !Silent;
+	if (Silent)
+		lcd.printP(msgSilent);
+	else
+		lcd.printP(msgNoisy);
+	delay(1000);
+	showMainInit();
 }
 
 void printVaporValues() {
@@ -802,7 +824,7 @@ void showOffsetVaporRefresh() {
 	uint8_t pos = lcd.getCursor();
 	lcd.noCursor();
 	lcd.setCursor(9,0);
-	lcd.print(dtostrf(Settings.VaporOffset, 6, 2, lineBuffer));
+	lcd.print(dtostrf(float(Settings.VaporOffset) / 100, 6, 2, lineBuffer));
 	lcd.setCursor(0,1);
 	printVaporValues();
 	lcd.setCursor(pos,0);
@@ -830,7 +852,7 @@ void showOffsetBoilerRefresh() {
 	uint8_t pos = lcd.getCursor();
 	lcd.noCursor();
 	lcd.setCursor(9,0);
-	lcd.print(dtostrf(Settings.BoilerOffset, 6, 2, lineBuffer));
+	lcd.print(dtostrf(float(Settings.BoilerOffset) / 100, 6, 2, lineBuffer));
 	lcd.setCursor(0,1);
 	printBoilerValues();
 	lcd.setCursor(pos,0);
@@ -844,8 +866,8 @@ void nextDigitOffset() {
 	case 11:
 		lcd.setCursor(13, 0);
 		break;
-	case 15:
-		lcd.setCursor(9, 0);
+	case 14:
+		lcd.setCursor(10, 0);
 		break;
 	default:
 		lcd.moveCursorRight();
@@ -861,8 +883,8 @@ void prevDigitOffset() {
 	case 13:
 		lcd.setCursor(11, 0);
 		break;
-	case 9:
-		lcd.setCursor(15, 0);
+	case 10:
+		lcd.setCursor(14, 0);
 		break;
 	default:
 		lcd.moveCursorLeft();
@@ -874,53 +896,43 @@ void prevDigitOffset() {
 void incDigitOffset() {
 	uint8_t pos = lcd.getCursor();
 	switch (pos) {
-	case 9:
-		*offset += 100;
-		break;
 	case 10:
-		*offset += 10;
+		*offset += 1000;
 		break;
 	case 11:
-		*offset += 1;
+		*offset += 100;
 		break;
 	case 13:
-		*offset += 0.1;
+		*offset += 10;
 		break;
 	case 14:
-		*offset += 0.01;
-		break;
-	case 15:
-		*offset = 0;
+		*offset += 1;
 		break;
 	default:
 		break;
 	}
+	*offset = constrain(*offset, -9999, 9999);
 }
 
 void decDigitOffset() {
 	uint8_t pos = lcd.getCursor();
 	switch (pos) {
-	case 9:
-		*offset -= 100;
-		break;
 	case 10:
-		*offset -= 10;
+		*offset -= 1000;
 		break;
 	case 11:
-		*offset -= 1;
+		*offset -= 100;
 		break;
 	case 13:
-		*offset -= 0.1;
+		*offset -= 10;
 		break;
 	case 14:
-		*offset -= 0.01;
-		break;
-	case 15:
-		*offset = 0;
+		*offset -= 1;
 		break;
 	default:
 		break;
 	}
+	*offset = constrain(*offset, -9999, 9999);
 }
 
 void showAlarmsInit() {
