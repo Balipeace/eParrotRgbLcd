@@ -23,8 +23,10 @@
  * to make the compiled sketch fit into the UNO R3
  */
 
+const int ForesAlarm = -10;
+
 const char msgSplash1[] PROGMEM = "eParrot  RGB LCD";
-const char msgSplash2[] PROGMEM = "V 0.01    (c) EC";
+const char msgSplash2[] PROGMEM = "V 0.02    (c) EC";
 const char logFilename[] PROGMEM =  "RUN_00.CSV";
 const char msgNoBaro[] PROGMEM = "No Barometer";
 const char msgCanceled[] PROGMEM = "Canceled";
@@ -39,7 +41,9 @@ const char msgNoSensor[] PROGMEM = "  Sensor error  ";
 const char msgBoilerOffset[] PROGMEM = "Blr Offs";
 const char msgVaporOffset[] PROGMEM = "Vpr Offs";
 const char msgSilent[] PROGMEM = "Silent";
-const char msgNoisy[] PROGMEM = "Noisy";
+const char msgAudial[] PROGMEM = "Audial";
+const char msgForesAlarm[] PROGMEM = " FS";
+const char msgFores[] PROGMEM = "FORES";
 /*----make instances for the Dallas sensors, BMP280, etc. ----*/
 OneWire pinBoilerSensor(pinBoiler), pinVaporSensor(pinVapor);
 SingleDS18B20 BoilerDS18B20(&pinBoilerSensor), VaporDS18B20(&pinVaporSensor);
@@ -71,7 +75,7 @@ union {
 		int16_t VaporOffset;		// in cC
 		int16_t BoilerOffset;		// in cC
 		uint8_t Alarm[4];			// in %
-		uint8_t AlarmWarmedUp;		// in C
+		uint8_t WarmedUp;			// in C
 	};
 } Settings;
 
@@ -89,13 +93,14 @@ void (*ReturnPage)();
 
 bool Backlight = true;
 bool Silent;
+bool ForesConfirmed;
 uint32_t LastFastSensorUpdate;
 uint32_t LastHandleAlarmUpdate;
 uint32_t LastSlowSensorUpdate;
 uint32_t StartTimeLog;
 uint32_t LastAlarmUpdate;
 uint32_t LastWarmingupUpdate;
-uint8_t CurrentAlarm;
+uint8_t CurrentAlarm = 4;
 
 
 int16_t* offset;
@@ -211,12 +216,6 @@ void setup()
 	readFastSensors();
 	LastFastSensorUpdate=millis();
 
-	for (int i = 0; i < 4; ++i) {
-		if (Settings.Alarm[i] > 99)
-			Settings.Alarm[i] = 99;
-	}
-	if (Settings.AlarmWarmedUp > 99)
-		Settings.AlarmWarmedUp = 99;
 	showMainInit();
 }
 
@@ -243,9 +242,9 @@ void handleWarmingup() {
 	float DeltaT;
 	// calculate the warmup time
 	if ((Sensors.BoilerType != NoSensor) && (Sensors.BoilerLastTemperature > 0)
-			&& (Sensors.BoilerTemperature < Settings.AlarmWarmedUp)) {
+			&& (Sensors.BoilerTemperature < Settings.WarmedUp)) {
 		DeltaT = Sensors.BoilerTemperature - Sensors.BoilerLastTemperature;
-		Sensors.WarmupTime = int16_t(constrain((float(Settings.AlarmWarmedUp)
+		Sensors.WarmupTime = int16_t(constrain((float(Settings.WarmedUp)
 					- Sensors.BoilerTemperature) / DeltaT + 0.5, 0, 5999));
 	} else
 		Sensors.WarmupTime = 0;
@@ -254,8 +253,12 @@ void handleWarmingup() {
 }
 
 void handleAlarms() {
-	if (	Sensors.VaporABV >= 0 &&
-			Sensors.VaporABV < Settings.Alarm[CurrentAlarm]) {
+	if ((Sensors.VaporABV >= 0 && CurrentAlarm < 4
+			&& Sensors.VaporABV < Settings.Alarm[CurrentAlarm]) ||
+			(Sensors.VaporABV < 0 && CurrentAlarm > 3
+						&& Sensors.VaporABV > ForesAlarm)
+	)
+	{
 		if (AlarmStatus == armed) {
 			AlarmStatus = triggered;
 		}
@@ -513,7 +516,7 @@ void showMainInit() {
 
 
 void nextAlarm() {
-	if (CurrentAlarm < 3) {
+	if (CurrentAlarm < 4) {
 		CurrentAlarm++;
 	} else CurrentAlarm = 0;
 }
@@ -521,7 +524,7 @@ void nextAlarm() {
 void prevAlarm() {
 	if (CurrentAlarm > 0) {
 		CurrentAlarm--;
-	} else CurrentAlarm = 3;
+	} else CurrentAlarm = 4;
 }
 
 void toggleAlarm() {
@@ -547,7 +550,7 @@ void toggleSilent() {
 	if (Silent)
 		lcd.printP(msgSilent);
 	else
-		lcd.printP(msgNoisy);
+		lcd.printP(msgAudial);
 	delay(1000);
 	showMainInit();
 }
@@ -556,12 +559,19 @@ void printVaporValues() {
 	lcd.print(dtostrf(Sensors.VaporTemperature, 6, 2, lineBuffer));
 	lcd.print('C');
 	lcd.print(' ');
-	if (Sensors.VaporABV < 0)
-		lcd.printP(msgNoValue);
+	if (Sensors.VaporABV > ForesAlarm)
+		lcd.printP(msgFores);
+	else {
+		if (Sensors.VaporABV < 0)
+			lcd.printP(msgNoValue);
+		else
+			lcd.print(dtostrf(Sensors.VaporABV, 4, 1, lineBuffer));
+		lcd.print('%');
+	}
+	if (CurrentAlarm == 4)
+		lcd.printP(msgForesAlarm);
 	else
-		lcd.print(dtostrf(Sensors.VaporABV, 4, 1, lineBuffer));
-	lcd.print('%');
-	lcd.print(dtostrf(Settings.Alarm[CurrentAlarm], 3, 0, lineBuffer));
+		lcd.print(dtostrf(Settings.Alarm[CurrentAlarm], 3, 0, lineBuffer));
 }
 
 void printBoilerValues() {
@@ -580,7 +590,7 @@ void printBoilerValues() {
 
 void printRemainingTime() {
 	lcd.print(dtostrf(Sensors.BoilerTemperature, 6, 2, lineBuffer));
-	sprintf(lineBuffer, "C %.2hd:%.2hd %.2hd", Sensors.WarmupTime / 60 , Sensors.WarmupTime % 60, Settings.AlarmWarmedUp);
+	sprintf(lineBuffer, "C %.2hd:%.2hd %.2hd", Sensors.WarmupTime / 60 , Sensors.WarmupTime % 60, Settings.WarmedUp);
 	lcd.print(lineBuffer);
 }
 
@@ -941,7 +951,7 @@ void showAlarmsInit() {
 	sprintf(lineBuffer, "1 %.2hd%% 2 %.2hd%%  BLR", Settings.Alarm[0], Settings.Alarm[1]);
 	lcd.print(lineBuffer);
 	lcd.setCursor(0,1);
-	sprintf(lineBuffer, "3 %.2hd%% 4 %.2hd%%  %.2hdC", Settings.Alarm[2], Settings.Alarm[3], Settings.AlarmWarmedUp);
+	sprintf(lineBuffer, "3 %.2hd%% 4 %.2hd%%  %.2hdC", Settings.Alarm[2], Settings.Alarm[3], Settings.WarmedUp);
 	lcd.print(lineBuffer);
 	lcd.clearKeys();
 	lcd.keyUp.onShortPress = showOffsetBoilerInit;
@@ -1047,7 +1057,7 @@ void setAlarms() {
 	lcd.setCursor(13,1);
 	value = (lcd.read() - 0x30) * 10;
 	value += (lcd.read() - 0x30);
-	Settings.AlarmWarmedUp = value;
+	Settings.WarmedUp = value;
 
 	saveSettings();
 	save();
