@@ -26,7 +26,7 @@
 const int ForesAlarm = -10;
 
 const char msgSplash1[] PROGMEM = "eParrot  RGB LCD";
-const char msgSplash2[] PROGMEM = "V 0.02    (c) EC";
+const char msgSplash2[] PROGMEM = "V 0.03    (c) EC";
 const char logFilename[] PROGMEM =  "RUN_00.CSV";
 const char msgNoBaro[] PROGMEM = "No Barometer";
 const char msgCanceled[] PROGMEM = "Canceled";
@@ -155,15 +155,6 @@ void initBoilerSensor() {
 		Sensors.BoilerType = NoSensor;
 }
 
-
-bool initDS18B20(SingleDS18B20* sensor) {
-	if (sensor->setResolution(SingleDS18B20::res12bit)) {
-		return sensor->convert();
-	} else
-		return false;
-}
-
-
 //The setup function is called once at startup of the sketch
 void setup()
 {
@@ -179,24 +170,6 @@ void setup()
 		};
 	}
 
-	// check if time is set
-	if (!rtc.readClock()) {
-		rtc.clearRam();
-		rtc.year = 17;
-		rtc.month = 1;
-		rtc.day = 1;
-		rtc.hour = 12;
-		rtc.minute = 0;
-		rtc.second = 0;
-		setTimeInit();
-		// wait until time is set
-		while (!rtc.readClock()) {
-			lcd.readKeys();
-		}
-	}
-
-	loadSettings();
-
 	// Initialize the temperature sensors
 
 	initBoilerSensor();
@@ -209,14 +182,26 @@ void setup()
 
 	delay(3000);
 
-	lcd.clear();
-
 	readSlowSensors();
 	LastSlowSensorUpdate=millis();
 	readFastSensors();
 	LastFastSensorUpdate=millis();
 
-	showMainInit();
+	// check if time is set
+	if (!rtc.readClock()) {
+		rtc.clearRam();
+		rtc.year = 17;
+		rtc.month = 1;
+		rtc.day = 1;
+		rtc.hour = 12;
+		rtc.minute = 0;
+		rtc.second = 0;
+		ReturnPage = showTimeInit;
+		setTimeInit();
+	} else
+		showMainInit();
+
+	loadSettings();
 }
 
 void doFunctionAtInterval(void (*callBackFunction)(), uint32_t *lastEvent,
