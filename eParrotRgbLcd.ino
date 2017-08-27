@@ -26,7 +26,7 @@
 const int ForesAlarm = -10;
 
 const char msgSplash1[] PROGMEM = "eParrot  RGB LCD";
-const char msgSplash2[] PROGMEM = "V 0.03    (c) EC";
+const char msgSplash2[] PROGMEM = "V 0.04    (c) EC";
 const char logFilename[] PROGMEM =  "RUN_00.CSV";
 const char msgNoBaro[] PROGMEM = "No Barometer";
 const char msgCanceled[] PROGMEM = "Canceled";
@@ -36,7 +36,7 @@ const char msgToStop[] PROGMEM = "Press S to stop";
 const char msgNoCard[] PROGMEM = "No card   ";
 const char msgFullCard[] PROGMEM = "Card full ";
 const char msghPa[] PROGMEM = "hPa";
-const char msgNoValue[] PROGMEM = "--.-";
+const char msgNoValue[] PROGMEM = "--.-%";
 const char msgNoSensor[] PROGMEM = "  Sensor error  ";
 const char msgBoilerOffset[] PROGMEM = "Blr Offs";
 const char msgVaporOffset[] PROGMEM = "Vpr Offs";
@@ -544,15 +544,16 @@ void printVaporValues() {
 	lcd.print(dtostrf(Sensors.VaporTemperature, 6, 2, lineBuffer));
 	lcd.print('C');
 	lcd.print(' ');
-	if (Sensors.VaporABV > ForesAlarm)
+	if (Sensors.VaporABV < ForesAlarm) {
+		lcd.printP(msgNoValue);
+	}
+	else if (Sensors.VaporABV < 0)
 		lcd.printP(msgFores);
 	else {
-		if (Sensors.VaporABV < 0)
-			lcd.printP(msgNoValue);
-		else
-			lcd.print(dtostrf(Sensors.VaporABV, 4, 1, lineBuffer));
+		lcd.print(dtostrf(Sensors.VaporABV, 4, 1, lineBuffer));
 		lcd.print('%');
 	}
+
 	if (CurrentAlarm == 4)
 		lcd.printP(msgForesAlarm);
 	else
@@ -565,9 +566,10 @@ void printBoilerValues() {
 	lcd.print(' ');
 	if (Sensors.BoilerABV < 0)
 		lcd.printP(msgNoValue);
-	else
+	else {
 		lcd.print(dtostrf(Sensors.BoilerABV, 4, 1, lineBuffer));
-	lcd.print('%');
+		lcd.print('%');
+	}
 	for (int i = 0; i < 3; ++i) {
 		lcd.print(' ');
 	}
