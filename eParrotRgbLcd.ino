@@ -26,7 +26,7 @@
 const int ForesAlarm = -10;
 
 const char msgSplash1[] PROGMEM = "eParrot  RGB LCD";
-const char msgSplash2[] PROGMEM = "V 0.04    (c) EC";
+const char msgSplash2[] PROGMEM = "V 0.05    (c) EC";
 const char logFilename[] PROGMEM =  "RUN_00.CSV";
 const char msgNoBaro[] PROGMEM = "No Barometer";
 const char msgCanceled[] PROGMEM = "Canceled";
@@ -320,7 +320,7 @@ void readSlowSensors() {
 	if (Sensors.BoilerType == DS18B20) {
 		if (BoilerDS18B20.read() && BoilerDS18B20.convert()) {
 			Sensors.BoilerTemperature = BoilerDS18B20.getTempAsC()
-					+ float(Settings.BoilerOffset / 100);
+					+ float(Settings.BoilerOffset) / 100;
 			Sensors.BoilerABV = TtoLiquidABV(
 					correctedH2O(Sensors.BoilerTemperature,
 							Sensors.BaroPressure));
