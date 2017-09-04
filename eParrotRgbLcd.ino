@@ -11,7 +11,6 @@
 #include <SimpleBMP280I2C.h>	//https://github.com/EdwinCroissantArduinoLibraries/SimpleBMP280I2C
 #include <SimpleDS1307I2C.h>	//https://github.com/EdwinCroissantArduinoLibraries/SimpleDS1307I2C
 #include <SingleDS18B20.h>		//https://github.com/EdwinCroissantArduinoLibraries/SingleDS18B20
-#include <SMT172.h>				//https://github.com/EdwinCroissantArduinoLibraries/SMT172
 #include "T2ABV.h"
 #include "myEnums.h"
 
@@ -26,7 +25,7 @@
 const int ForesAlarm = -10;
 
 const char msgSplash1[] PROGMEM = "eParrot  RGB LCD";
-const char msgSplash2[] PROGMEM = "V 0.05    (c) EC";
+const char msgSplash2[] PROGMEM = "V 0.06    (c) EC";
 const char logFilename[] PROGMEM =  "RUN_00.CSV";
 const char msgNoBaro[] PROGMEM = "No Barometer";
 const char msgCanceled[] PROGMEM = "Canceled";
@@ -130,20 +129,12 @@ void dateTime(uint16_t* date, uint16_t* time) {
 // Helper function to initialize the sensors and start the conversion
 
 void initVaporSensor() {
-	SMT172::startTemperature(0.001);
-	delay(5);
-	if (SMT172::getStatus() != 2) {
-		Sensors.VaporType = smt172;
-	} else if (VaporDS18B20.read()) {
+	if (VaporDS18B20.read()) {
 		VaporDS18B20.setResolution(SingleDS18B20::res12bit);
 		VaporDS18B20.convert();
 		Sensors.VaporType = DS18B20;
-	} else {
-		// disable internal pullup resistor
-		pinMode(pinVapor, INPUT);
-		digitalWrite(pinVapor, LOW);
+	} else
 		Sensors.VaporType = NoSensor;
-	}
 }
 
 void initBoilerSensor() {
@@ -216,7 +207,7 @@ void doFunctionAtInterval(void (*callBackFunction)(), uint32_t *lastEvent,
 // The loop function is called in an endless loop
 void loop()
 {
-	doFunctionAtInterval(readFastSensors, &LastFastSensorUpdate, 250);	// read the SMT172 every 250 millisecond
+	doFunctionAtInterval(readFastSensors, &LastFastSensorUpdate, 250);
 	doFunctionAtInterval(handleAlarms, &LastHandleAlarmUpdate, 500);	// handle the alarms every 500 millisecond
 	doFunctionAtInterval(readSlowSensors, &LastSlowSensorUpdate, 1000);	// read the baro and DS18B20's every second
 	doFunctionAtInterval(handleWarmingup, &LastWarmingupUpdate, 60000);	// check warming up every minute
@@ -278,22 +269,6 @@ void handleAlarms() {
 }
 
 void readFastSensors() {
-	if (Sensors.VaporType == smt172) {
-		switch (SMT172::getStatus()) {
-		case 0:
-			break;
-		case 1:
-			Sensors.VaporTemperature = SMT172::getTemperature()
-					+ float(Settings.VaporOffset) / 100;
-			Sensors.VaporABV = TtoVaporABV(
-					correctedAzeo(Sensors.VaporTemperature,
-							Sensors.BaroPressure));
-			SMT172::startTemperature(0.001);
-			break;
-		case 2:
-			Sensors.VaporType = NoSensor;
-		}
-	}
 	if (AutoPageFastRefresh)
 		AutoPageFastRefresh();
 }
@@ -301,7 +276,7 @@ void readFastSensors() {
 void readSlowSensors() {
 	// Retrieve the current pressure in Pascal.
 	Sensors.BaroPressure = float(baro.getPressure()) / 100;
-	// Retrieve the current temperature in 0.01 degrees Celcius.
+ 	// Retrieve the current temperature in 0.01 degrees Celcius.
 	Sensors.BaroTemperature = float(baro.getLastTemperature()) / 100;
 	// calculate the boiling point of water
 	Sensors.H2OBoilingPoint = h2oBoilingPoint(Sensors.BaroPressure);
@@ -310,9 +285,8 @@ void readSlowSensors() {
 		if (VaporDS18B20.read() && VaporDS18B20.convert()) {
 			Sensors.VaporTemperature = VaporDS18B20.getTempAsC()
 					+ float(Settings.VaporOffset) / 100;
-			Sensors.VaporABV = TtoVaporABV(
-					correctedAzeo(Sensors.VaporTemperature,
-							Sensors.BaroPressure));
+			Sensors.VaporABV = TtoVaporABV(Sensors.VaporTemperature,
+							Sensors.BaroPressure);
 		} else
 			Sensors.VaporType = NoSensor;
 	}
@@ -321,9 +295,8 @@ void readSlowSensors() {
 		if (BoilerDS18B20.read() && BoilerDS18B20.convert()) {
 			Sensors.BoilerTemperature = BoilerDS18B20.getTempAsC()
 					+ float(Settings.BoilerOffset) / 100;
-			Sensors.BoilerABV = TtoLiquidABV(
-					correctedH2O(Sensors.BoilerTemperature,
-							Sensors.BaroPressure));
+			Sensors.BoilerABV = TtoLiquidABV(Sensors.BoilerTemperature,
+							Sensors.BaroPressure);
 		} else
 			Sensors.BoilerType = NoSensor;
 	}
@@ -690,39 +663,33 @@ void setTimeInit() {
 	lcd.keySelect.onLongPress = setTime;
 }
 
+uint8_t lcdGetDoubleDigit() {
+	uint8_t value;
+	value = (lcd.read() - 0x30) * 10;
+	value += (lcd.read() - 0x30);
+	return value;
+}
+
 void setTime() {
 	lcd.noCursor();
-	uint8_t value;
 
 	lcd.setCursor(8,0);
-	value = (lcd.read() - 0x30) * 10;
-	value += (lcd.read() - 0x30);
-	rtc.year = value;
+	rtc.year = lcdGetDoubleDigit();
 
 	lcd.setCursor(11,0);
-	value = (lcd.read() - 0x30) * 10;
-	value += (lcd.read() - 0x30);
-	rtc.month = value;
+	rtc.month = lcdGetDoubleDigit();
 
 	lcd.setCursor(14,0);
-	value = (lcd.read() - 0x30) * 10;
-	value += (lcd.read() - 0x30);
-	rtc.day = value;
+	rtc.day = lcdGetDoubleDigit();
 
 	lcd.setCursor(8,1);
-	value = (lcd.read() - 0x30) * 10;
-	value += (lcd.read() - 0x30);
-	rtc.hour = value;
+	rtc.hour = lcdGetDoubleDigit();
 
 	lcd.setCursor(11,1);
-	value = (lcd.read() - 0x30) * 10;
-	value += (lcd.read() - 0x30);
-	rtc.minute = value;
+	rtc.minute = lcdGetDoubleDigit();
 
 	lcd.setCursor(14,1);
-	value = (lcd.read() - 0x30) * 10;
-	value += (lcd.read() - 0x30);
-	rtc.second = value;
+	rtc.second = lcdGetDoubleDigit();
 
 	rtc.setClock();
 	save();
@@ -863,7 +830,7 @@ void nextDigitOffset() {
 	case 11:
 		lcd.setCursor(13, 0);
 		break;
-	case 14:
+	case 15:
 		lcd.setCursor(10, 0);
 		break;
 	default:
@@ -881,7 +848,7 @@ void prevDigitOffset() {
 		lcd.setCursor(11, 0);
 		break;
 	case 10:
-		lcd.setCursor(14, 0);
+		lcd.setCursor(15, 0);
 		break;
 	default:
 		lcd.moveCursorLeft();
@@ -905,6 +872,9 @@ void incDigitOffset() {
 	case 14:
 		*offset += 1;
 		break;
+	case 15:
+		*offset = 0;
+		break;
 	default:
 		break;
 	}
@@ -925,6 +895,9 @@ void decDigitOffset() {
 		break;
 	case 14:
 		*offset -= 1;
+		break;
+	case 15:
+		*offset = 0;
 		break;
 	default:
 		break;

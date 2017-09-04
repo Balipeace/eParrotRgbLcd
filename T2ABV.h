@@ -35,16 +35,7 @@ float azeotrope(float p) {
 	return AzeotropeInKelvin - 273.15;
 }
 
-
-float correctedH2O(float T, float P) {
-	return T + 100 - h2oBoilingPoint(P);
-}
-
-float correctedAzeo(float T, float P) {
-	return T + 78.174 - azeotrope(P);
-}
-
-float TtoLiquidABV(float T) {
+float TtoLiquidABV(float T, float P) {
 	const static uint8_t ABV[] PROGMEM = {
 			  /* by using PROGMEM the array stays in the program memory and is not copied to precious sram. */
 			 196, 181, 166, 158, 151, 145, 136, 129, 123, 117, 110, 104,  98,  92,  86,  79,  74,  68,  62,  56,
@@ -68,9 +59,9 @@ float TtoLiquidABV(float T) {
 
 	// Calculate the index for the table (1251 is the the azeotrope at 1013.25 hPa and the
 	// starting point of the table) in °DC
-	int16_t IndexABV = int16_t((T+ 0.03125) / 0.0625 ) - 1251;
+	int16_t IndexABV = int16_t((T + 0.03125 + 100 - h2oBoilingPoint(P)) / 0.0625 ) - 1251;
 
-	if (IndexABV < 0) return IndexABV; // Below azeotrope
+	if (IndexABV < 0) return float(IndexABV) * 0.0625; // Below azeotrope
 	if (IndexABV >= int16_t(sizeof ABV / sizeof *ABV)) return 0; // Above 100 °C
 	if (IndexABV < 29) return float(pgm_read_byte(&ABV[IndexABV]) + 768) / 10;
 	if (IndexABV < 74) return float(pgm_read_byte(&ABV[IndexABV]) + 512) / 10;
@@ -78,7 +69,7 @@ float TtoLiquidABV(float T) {
 	return float(pgm_read_byte(&ABV[IndexABV])) / 10;
 };
 
-float TtoVaporABV(float T) {
+float TtoVaporABV(float T, float P) {
 	const static uint8_t ABV[] PROGMEM = {
 			  /* by using PROGMEM the array stays in the program memory and is not copied to precious sram. */
 
@@ -103,9 +94,9 @@ float TtoVaporABV(float T) {
 
 	// Calculate the index for the table (1251 is the the azeotrope at 1013.25 hPa and the
 	// starting point of the table) in °DC
-	int16_t IndexABV = int16_t((T+ 0.03125) / 0.0625 ) - 1251;
+	int16_t IndexABV = int16_t((T + 0.03125 + 78.174 - azeotrope(P)) / 0.0625 ) - 1251;
 
-	if (IndexABV < 0) return IndexABV; // Below azeotrope
+	if (IndexABV < 0) return float(IndexABV) * 0.0625; // Below azeotrope
 	if (IndexABV >= int16_t(sizeof ABV / sizeof *ABV)) return 0; // Above 100 °C
 	if (IndexABV < 114) return float(pgm_read_byte(&ABV[IndexABV]) + 768) / 10;
 	if (IndexABV < 256) return float(pgm_read_byte(&ABV[IndexABV]) + 512) / 10;
