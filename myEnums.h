@@ -13,30 +13,35 @@
  */
 
 
-/*----pin assignments ----*/
+/*----( pin assignments )----*/
 
 enum pins {
 	pinBeeper = 2,	// Passive beeper use tone library
 	pinLed = 13,
-	pinBoiler = 7, 	// DS18B20 Only
-	pinVapor = 8,	// ICP1 for optional SMT172
-	pinCS = 9,		// SD card cs
+	pinBoilerPressure = A0,	// MPXV7002DP or equivalent
+	pinBoilerAlarmDisable = A1,
+	pinCondenserAlarmDisable = A2,
+	pinCondenser = 6,		// DS18B20 Only
+	pinBoiler = 7,			// DS18B20 Only
+	pinVapor = 8,			// DS18B20 Only
+	pinCS = 9,				// SD card cs
 };
 
-/*----Recognizable names for the sensor types ----*/
-
+/*----( Recognizable names for the sensor types )----*/
 enum sensorType {
 	NoSensor = 0,
 	smt172 = 1,
 	DS18B20 = 2,
 };
 
+/*----( Recognizable names for Sd status )----*/
 enum createStatus {
 	noCard,
 	fullCard,
 	fileOk
 };
 
+/*----( Recognizable names for the alarm status )----*/
 enum alarmStatus {
 	disabled,
 	armed,
