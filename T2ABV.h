@@ -20,6 +20,17 @@
 #define T2ABV_H_
 
 #include <avr/pgmspace.h>
+#include "MyPinsAndSettings.h"
+
+/*
+ * -----Experimental-----
+ * The vapor from a boiling water ethanol mixture is superheated.
+ * In a CM still however the vapor after passing the reflux condenser is
+ * no longer superheated, resulting in a lower temperature.
+ * #define HOTVAPOR 0 deals with this situation.
+ */
+
+#define HOTVAPOR 1
 
 float h2oBoilingPoint(float p) {
 	// calculate the the boiling temperature of water for the measured pressure in Celsius
@@ -34,6 +45,8 @@ float azeotrope(float p) {
 			/ (4157 * log(p / 1013.25) * 351.324 - 19280000);
 	return AzeotropeInKelvin - 273.15;
 }
+
+#if HOTVAPOR == 1
 
 float TtoLiquidABV(float T, float P) {
 	const static uint8_t ABV[] PROGMEM = {
@@ -103,5 +116,58 @@ float TtoVaporABV(float T, float P) {
 	if (IndexABV < 314) return float(pgm_read_byte(&ABV[IndexABV]) + 256) / 10;
 	return float(pgm_read_byte(&ABV[IndexABV])) / 10;
 };
+
+#else
+
+const static uint8_t ABV[] PROGMEM = {
+		  /* by using PROGMEM the array stays in the program memory and is not copied to precious sram. */
+		 196, 181, 166, 158, 151, 145, 136, 129, 123, 117, 110, 104,  98,  92,  86,  79,  74,  68,  62,  56,
+		  50,  45,  39,  33,  27,  21,  15,   9,   3, 253, 247, 241, 235, 229, 224, 218, 212, 207, 201, 195,
+		 191, 188, 183, 178, 172, 165, 158, 151, 145, 139, 133, 127, 122, 116, 111, 105,  98,  93,  87,  80,
+		  74,  69,  63,  57,  52,  46,  40,  36,  29,  24,  18,  13,   8,   2, 252, 246, 241, 235, 229, 224,
+		 217, 212, 206, 201, 196, 191, 187, 182, 177, 172, 167, 163, 159, 155, 150, 146, 141, 137, 133, 129,
+		 125, 121, 116, 112, 107, 103,  99,  94,  90,  86,  82,  78,  74,  70,  67,  63,  59,  55,  50,  46,
+		  42,  38,  33,  29,  25,  21,  16,  13,  11,   9,   8,   7,   7,   5,   4,   3,   2,   1, 255, 254,
+		 253, 252, 251, 250, 249, 247, 246, 243, 241, 238, 236, 233, 231, 228, 226, 223, 221, 219, 217, 215,
+		 213, 211, 210, 208, 206, 204, 202, 200, 198, 197, 195, 193, 191, 190, 188, 186, 185, 183, 181, 179,
+		 177, 175, 173, 171, 170, 168, 166, 165, 163, 162, 160, 159, 157, 156, 155, 153, 151, 150, 148, 147,
+		 146, 145, 143, 142, 141, 139, 138, 137, 135, 134, 133, 132, 131, 130, 129, 128, 126, 125, 124, 123,
+		 122, 120, 119, 118, 116, 115, 114, 113, 112, 111, 110, 109, 108, 107, 105, 104, 103, 102, 101,  99,
+		  98,  97,  95,  94,  93,  92,  91,  89,  88,  87,  86,  85,  84,  83,  82,  81,  80,  79,  79,  78,
+		  77,  76,  75,  74,  72,  71,  70,  68,  67,  66,  65,  64,  63,  62,  61,  60,  59,  58,  58,  57,
+		  55,  54,  53,  52,  51,  50,  49,  49,  48,  47,  46,  46,  45,  45,  44,  43,  43,  42,  41,  41,
+		  40,  39,  38,  38,  37,  36,  35,  34,  33,  32,  31,  30,  29,  28,  28,  27,  26,  26,  25,  24,
+		  24,  23,  22,  21,  20,  20,  19,  18,  17,  16,  15,  14,  13,  12,  11,  10,  10,   9,   9,   8,
+		   8,   7,   7,   7,   6,   6,   5,   4,   2,   0}; // 350 values
+
+float TtoABV(float T, float P, bool nearAzeo) {
+	// Calculate the index for the table (1251 is the the azeotrope at 1013.25 hPa and the
+	// starting point of the table) in °DC
+	int16_t IndexABV;
+	if (nearAzeo)
+		IndexABV = int16_t((T + 0.03125 + 78.174 - azeotrope(P)) / 0.0625 ) - 1251;
+	else
+		IndexABV = int16_t((T + 0.03125 + 100 - h2oBoilingPoint(P)) / 0.0625 ) - 1251;
+
+	if (IndexABV < 0) return float(IndexABV) * 0.0625; // Below azeotrope
+	if (IndexABV >= int16_t(sizeof ABV / sizeof *ABV)) return 0; // Above 100 °C
+	if (IndexABV < 29) return float(pgm_read_byte(&ABV[IndexABV]) + 768) / 10;
+	if (IndexABV < 74) return float(pgm_read_byte(&ABV[IndexABV]) + 512) / 10;
+	if (IndexABV < 138) return float(pgm_read_byte(&ABV[IndexABV]) + 256) / 10;
+	return float(pgm_read_byte(&ABV[IndexABV])) / 10;
+};
+
+
+float TtoLiquidABV(float T, float P) {
+	return TtoABV(T,P, false);
+};
+
+float TtoVaporABV(float T, float P) {
+	return TtoABV(T,P, true);
+};
+
+
+#endif /* HOTVAPOR */
+
 
 #endif /* T2ABV_H_ */

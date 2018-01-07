@@ -25,7 +25,7 @@
 
 /*----( strings in flash )----*/
 const char msgSplash1[] PROGMEM = "eParrot  RGB LCD";
-const char msgSplash2[] PROGMEM = "V 0.10    (c) EC";
+const char msgSplash2[] PROGMEM = "V 0.11    (c) EC";
 const char logFilename[] PROGMEM =  "RUN_00.CSV";
 const char msgNo[] PROGMEM = "No";
 const char msgCanceled[] PROGMEM = "Canceled";
@@ -170,12 +170,14 @@ void setup()
 	pinMode(pinVent1AlarmEnable, INPUT_PULLUP);
 	pinMode(pinVent2AlarmEnable, INPUT_PULLUP);
 
+	// initialize lcd
 	I2c.begin();
 	I2c.setSpeed(1);
 	I2c.timeOut(10);
 	lcd.begin();
 	lcd.setColor(RgbLcdKeyShieldI2C::clWhite);
 
+	// test barometer
 	if (!baro.begin())
 		if (!baro.begin(0x77)) {
 			lcd.printP(msgNo);
@@ -184,6 +186,24 @@ void setup()
 			while (true) {
 			};
 		}
+
+	// check if time is set
+	if (!rtc.readClock()) {
+		rtc.clearRam();
+		rtc.year = 18;
+		rtc.month = 1;
+		rtc.day = 1;
+		rtc.hour = 0;
+		rtc.minute = 0;
+		rtc.second = 0;
+		ReturnPage = nullptr; // reboot when done
+		setTimeInit();
+		while (true) {
+			lcd.readKeys();
+		};
+	}
+
+	loadSettings();
 
 	// Initialize the temperature sensors
 	Sensors.Vapor.Type = initDS18B20(VaporDS18B20);
@@ -201,21 +221,7 @@ void setup()
 	readSensors();
 	LastSensorUpdate=millis();
 
-	// check if time is set
-	if (!rtc.readClock()) {
-		rtc.clearRam();
-		rtc.year = 17;
-		rtc.month = 1;
-		rtc.day = 1;
-		rtc.hour = 12;
-		rtc.minute = 0;
-		rtc.second = 0;
-		ReturnPage = showTimeInit;
-		setTimeInit();
-	} else
-		showMainInit();
-
-	loadSettings();
+	showMainInit();
 }
 
 void doFunctionAtInterval(void (*callBackFunction)(), uint32_t &lastEvent,
