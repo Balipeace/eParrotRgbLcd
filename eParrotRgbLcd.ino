@@ -25,7 +25,7 @@
 
 /*----( strings in flash )----*/
 const char msgSplash1[] PROGMEM = "eParrot  RGB LCD";
-const char msgSplash2[] PROGMEM = "V 0.11    (c) EC";
+const char msgSplash2[] PROGMEM = "V 0.12    (c) EC";
 const char logFilename[] PROGMEM =  "RUN_00.CSV";
 const char msgNo[] PROGMEM = "No";
 const char msgCanceled[] PROGMEM = "Canceled";
@@ -828,11 +828,19 @@ void showLogStatus() {
 }
 
 void toggleLogging() {
-	if (LogFile.status == notLogging)
-		LogFile.status = createFile();
-	else {
-		LogFile.status = notLogging;
-		FlashBacklight = false;
+	switch (LogFile.status) {
+		case notLogging:
+			LogFile.status = createFile();
+			break;
+		case fileError:
+			FlashBacklight = false;
+			/*
+			 * no break as we want to fall through
+			 * to set the status to notLogging
+			 */
+		default:
+			LogFile.status = notLogging;
+			break;
 	}
 	showLogStatus();
 }
