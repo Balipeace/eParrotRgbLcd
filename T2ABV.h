@@ -71,11 +71,11 @@ float TtoLiquidABV(float T, float P) {
 			   8,   7,   7,   7,   6,   6,   5,   4,   2,   0}; // 350 values
 
 	// Calculate the index for the table (1251 is the the azeotrope at 1013.25 hPa and the
-	// starting point of the table) in 캝C
+	// starting point of the table) in 째DC
 	int16_t IndexABV = int16_t((T + 0.03125 + 100 - h2oBoilingPoint(P)) / 0.0625 ) - 1251;
 
 	if (IndexABV < 0) return float(IndexABV) * 0.0625; // Below azeotrope
-	if (IndexABV >= int16_t(sizeof ABV / sizeof *ABV)) return 0; // Above 100 캜
+	if (IndexABV >= int16_t(sizeof ABV / sizeof *ABV)) return 0; // Above 100 째C
 	if (IndexABV < 29) return float(pgm_read_byte(&ABV[IndexABV]) + 768) / 10;
 	if (IndexABV < 74) return float(pgm_read_byte(&ABV[IndexABV]) + 512) / 10;
 	if (IndexABV < 138) return float(pgm_read_byte(&ABV[IndexABV]) + 256) / 10;
@@ -106,11 +106,11 @@ float TtoVaporABV(float T, float P) {
 			  82,  77,  72,  68,  64,  60,  50,  40,  20,   0};  // 350 values
 
 	// Calculate the index for the table (1251 is the the azeotrope at 1013.25 hPa and the
-	// starting point of the table) in 캝C
+	// starting point of the table) in 째DC
 	int16_t IndexABV = int16_t((T + 0.03125 + 78.174 - azeotrope(P)) / 0.0625 ) - 1251;
 
 	if (IndexABV < 0) return float(IndexABV) * 0.0625; // Below azeotrope
-	if (IndexABV >= int16_t(sizeof ABV / sizeof *ABV)) return 0; // Above 100 캜
+	if (IndexABV >= int16_t(sizeof ABV / sizeof *ABV)) return 0; // Above 100 째C
 	if (IndexABV < 114) return float(pgm_read_byte(&ABV[IndexABV]) + 768) / 10;
 	if (IndexABV < 256) return float(pgm_read_byte(&ABV[IndexABV]) + 512) / 10;
 	if (IndexABV < 314) return float(pgm_read_byte(&ABV[IndexABV]) + 256) / 10;
@@ -142,7 +142,7 @@ const static uint8_t ABV[] PROGMEM = {
 
 float TtoABV(float T, float P, bool nearAzeo) {
 	// Calculate the index for the table (1251 is the the azeotrope at 1013.25 hPa and the
-	// starting point of the table) in 캝C
+	// starting point of the table) in 째DC
 	int16_t IndexABV;
 	if (nearAzeo)
 		IndexABV = int16_t((T + 0.03125 + 78.174 - azeotrope(P)) / 0.0625 ) - 1251;
@@ -150,7 +150,7 @@ float TtoABV(float T, float P, bool nearAzeo) {
 		IndexABV = int16_t((T + 0.03125 + 100 - h2oBoilingPoint(P)) / 0.0625 ) - 1251;
 
 	if (IndexABV < 0) return float(IndexABV) * 0.0625; // Below azeotrope
-	if (IndexABV >= int16_t(sizeof ABV / sizeof *ABV)) return 0; // Above 100 캜
+	if (IndexABV >= int16_t(sizeof ABV / sizeof *ABV)) return 0; // Above 100 째C
 	if (IndexABV < 29) return float(pgm_read_byte(&ABV[IndexABV]) + 768) / 10;
 	if (IndexABV < 74) return float(pgm_read_byte(&ABV[IndexABV]) + 512) / 10;
 	if (IndexABV < 138) return float(pgm_read_byte(&ABV[IndexABV]) + 256) / 10;
